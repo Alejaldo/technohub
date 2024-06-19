@@ -1,0 +1,56 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:15                            # Используем образ PostgreSQL версии 15
+    volumes:
+      - postgres-data:/var/lib/postgresql/data    # Настройка тома для хранения данных PostgreSQL
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}          # Имя базы данных для разработки
+      POSTGRES_USER: ${POSTGRES_USER}                # Имя пользователя PostgreSQL
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}            # Пароль пользователя PostgreSQL
+    ports:
+      - "5441:5432"                               # Переопределение порта PostgreSQL на 5441 для предотвращения конфликтов с локальными установками
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=2GB"                      # Увеличение объема памяти, выделенного для буферов, до 2GB для улучшения производительности
+      - "-c"
+      - "work_mem=64MB"                           # Выделение 64MB памяти для операций сортировки и объединения, чтобы ускорить выполнение запросов
+      - "-c"
+      - "maintenance_work_mem=512MB"              # 512MB памяти для операций обслуживания, таких как VACUUM и создание индексов, для ускорения этих процессов
+      - "-c"
+      - "synchronous_commit=off"                  # Отключение синхронного подтверждения для увеличения скорости записи транзакций (может привести к потере данных в случае сбоя)
+      - "-c"
+      - "checkpoint_timeout=10min"                # Увеличение времени между контрольными точками до 10 минут для уменьшения частоты записи данных на диск
+      - "-c"
+      - "max_wal_size=2GB"                        # Установка максимального размера WAL до 2GB для уменьшения частоты контрольных точек и увеличения производительности
+      - "-c"
+      - "max_connections=100"                     # Установка максимального количества соединений на 100 для обеспечения одновременной работы множества пользователей
+      - "-c"
+      - "effective_io_concurrency=1"              # Установка числа операций ввода-вывода, которые PostgreSQL ожидает выполнять одновременно, на 1 (подходит для обычных HDD)
+
+  web:
+    build:                                      # Строим образ для веб-сервиса из текущей директории
+      context: .
+      args:
+        POSTGRES_DB: ${POSTGRES_DB}
+        POSTGRES_USER: ${POSTGRES_USER}
+        POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+        SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+    command: bash -c "rm -f tmp/pids/server.pid && bundle exec rails s -p 3000 -b '0.0.0.0'" # Команда для запуска Rails сервера
+    volumes:
+      - .:/app                                    # Монтируем текущую директорию в контейнер для возможности внесения изменений в код без перезапуска контейнера
+    ports:
+      - "3000:3000"                               # Экспонируем порт 3000 для доступа к приложению
+    depends_on:
+      - db                                        # Указываем, что веб-сервис зависит от сервиса db, который должен быть запущен первым
+    env_file:
+      - .env
+    environment:
+      RAILS_ENV: production
+      PORT: 3000
+      SSL_KEY_PATH: /app/localhost.key
+      SSL_CERT_PATH: /app/localhost.crt
+
+volumes:
+  postgres-data:                                  # Определяем том для хранения данных PostgreSQL
